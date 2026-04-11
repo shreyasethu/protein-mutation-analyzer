@@ -9,4 +9,38 @@ tags:
   - medical-ai
 runtime:
   type: docker
-  port: 8000
+  port: 7860
+
+tasks:
+  - id: task_tier_1_easy
+    name: Easy Pathogenicity Classification
+    description: >
+      Classify a protein mutation as Pathogenic, Benign, or Uncertain using
+      a single dominant signal (conservation or structure). The deciding factor
+      is unambiguous, requiring at most one tool call.
+    difficulty: easy
+    task_id: 1
+    max_steps: 6
+    reward_threshold: 0.6
+
+  - id: task_tier_2_medium
+    name: Medium Pathogenicity Classification
+    description: >
+      Classify a protein mutation where two signals (conservation and structure)
+      must be weighed together. The deciding factor combines multiple data
+      sources, requiring two to three tool calls for full evidence.
+    difficulty: medium
+    task_id: 2
+    max_steps: 6
+    reward_threshold: 0.5
+
+  - id: task_tier_3_hard
+    name: Hard Pathogenicity Classification
+    description: >
+      Classify a protein mutation with conflicting or ambiguous signals across
+      conservation, structure, and domain annotation. All three tools may be
+      needed; the correct verdict depends on reconciling competing evidence.
+    difficulty: hard
+    task_id: 3
+    max_steps: 6
+    reward_threshold: 0.4
