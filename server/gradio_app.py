@@ -1,7 +1,8 @@
 import gradio as gr
 import requests
 
-BASE = "http://localhost:7860"  # Gradio server URL
+import os
+BASE = os.getenv("ENV_BASE_URL", "http://127.0.0.1:7860")
 
 
 def post(path, payload):

@@ -1,3 +1,5 @@
+# environment.py
+
 import json
 import random
 import os
@@ -7,11 +9,11 @@ from typing import Optional
 from openai import OpenAI
 
 from models import (
-    State, RewardBreakdown,
+    State,
     ProteinMutationAnalyzerObservation,
     ConservationToolOutput,
     StructureToolOutput,
-    DomainToolOutput
+    DomainToolOutput,
 )
 
 from server.tools.conservation import get_conservation_score as local_conservation
@@ -21,15 +23,13 @@ from server.tools.verdict import submit_verdict
 
 from openenv.core.env_server.interfaces import Environment as OpenEnvEnvironment
 
+
 # ───────── ENV CONFIG ─────────
 API_BASE_URL = os.getenv("API_BASE_URL")
 MODEL_NAME = os.getenv("MODEL_NAME")
 HF_TOKEN = os.getenv("HF_TOKEN")
 
-client = OpenAI(
-    base_url=API_BASE_URL,
-    api_key=HF_TOKEN
-) if API_BASE_URL and HF_TOKEN else None
+client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN) if API_BASE_URL and HF_TOKEN else None
 
 DATA_PATH = Path(__file__).parent / "data" / "mutations.json"
 
@@ -41,13 +41,11 @@ TOOL_COSTS = {
 }
 
 STEP_BUDGET = 6.0
-GLOBAL_STATE = {}
 
 
 def call_model(prompt: str):
     if client is None or MODEL_NAME is None:
         return None
-
     try:
         res = client.chat.completions.create(
             model=MODEL_NAME,
@@ -74,7 +72,6 @@ class ProteinMutationAnalyzerEnvironment(OpenEnvEnvironment):
         }
 
         self._state: Optional[State] = None
-        self._mistake_log = []
 
     def reset(self, seed=None, episode_id=None, **kwargs):
         task_id = kwargs.get("task_id", random.choice([1, 2, 3]))
@@ -105,12 +102,9 @@ class ProteinMutationAnalyzerEnvironment(OpenEnvEnvironment):
             adversary_weakness_profile={},
         )
 
-        GLOBAL_STATE["state"] = self._state
         return self._to_observation()
 
     def step(self, action, timeout_s=None, **kwargs):
-        self._state = GLOBAL_STATE.get("state", self._state)
-
         if self._state is None:
             raise RuntimeError("Call reset() before step()")
 
@@ -179,9 +173,7 @@ class ProteinMutationAnalyzerEnvironment(OpenEnvEnvironment):
                         domain_name="UnknownDomain",
                         is_critical=flag,
                         function_description=(
-                            "Critical functional region"
-                            if flag
-                            else "Non-critical region"
+                            "Critical functional region" if flag else "Non-critical region"
                         ),
                     )
                 else:
@@ -197,12 +189,12 @@ class ProteinMutationAnalyzerEnvironment(OpenEnvEnvironment):
                 from server.grader.grader import compute_reward
                 final = compute_reward(self._state, verdict)
 
-                GLOBAL_STATE["state"] = self._state
                 return self._to_observation(reward=final.total_reward)
 
         except Exception:
             return self._to_observation()
 
+        # ── bookkeeping ──
         cost = TOOL_COSTS[tool_name]
         self._state.budget_spent += cost
         self._state.budget_remaining -= cost
@@ -213,6 +205,7 @@ class ProteinMutationAnalyzerEnvironment(OpenEnvEnvironment):
 
         deciding = self._state.deciding_factor
 
+        # ── reward shaping ──
         if already_called:
             step_reward = -0.15
 
@@ -241,23 +234,23 @@ class ProteinMutationAnalyzerEnvironment(OpenEnvEnvironment):
         else:
             step_reward = 0.01
 
-        GLOBAL_STATE["state"] = self._state
         return self._to_observation(reward=round(step_reward, 4))
 
     def state(self):
-        s = GLOBAL_STATE.get("state")
-        if s is None:
+        if self._state is None:
             return {"episode_id": None, "step_count": 0}
 
         return {
-            "episode_id": s.mutation_id,
-            "step_count": s.steps_taken,
+            "episode_id": self._state.mutation_id,
+            "step_count": self._state.steps_taken,
         }
 
     def _to_observation(self, reward=None):
         s = self._state
+
         if reward is not None:
             reward = max(0.0, min(1.0, float(reward)))
+
         return ProteinMutationAnalyzerObservation(
             mutation_id=s.mutation_id,
             gene=s.gene,
