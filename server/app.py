@@ -94,7 +94,7 @@ except ImportError:
 
 try:
    gradio_demo = create_app()
-   app = gr.mount_gradio_app(app, gradio_demo, path="/web")
+   app = gr.mount_gradio_app(app, gradio_demo, path="/")
 except Exception as e:
    import logging
    logging.getLogger(__name__).warning(
