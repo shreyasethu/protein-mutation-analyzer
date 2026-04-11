@@ -26,7 +26,7 @@ Environment variables:
  API_BASE_URL   — LLM endpoint base (default: Groq)
  MODEL_NAME     — model identifier
  HF_TOKEN       — bearer token / API key
- ENV_BASE_URL   — server base URL (default: http://localhost:8000)
+ ENV_BASE_URL   — server base URL (default: http://localhost:7860)
 """
 
 
@@ -48,6 +48,8 @@ from openai import OpenAI
 API_BASE_URL = os.getenv("API_BASE_URL", "https://api.groq.com/openai/v1")
 MODEL_NAME   = os.getenv("MODEL_NAME",   "llama-3.3-70b-versatile")
 HF_TOKEN     = os.getenv("HF_TOKEN",     "")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+API_KEY = HF_TOKEN or OPENAI_API_KEY
 ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://localhost:8000")
 WS_BASE_URL  = ENV_BASE_URL.replace("http://", "ws://").replace("https://", "wss://")
 
@@ -69,8 +71,7 @@ logger = logging.getLogger(__name__)
 
 
 # ── OpenAI client (works with Groq, HF, or any OpenAI-compatible endpoint) ────
-client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
-
+client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
 
 # ── System prompt ──────────────────────────────────────────────────────────────
 SYSTEM_PROMPT = """You are a computational biology agent tasked with classifying protein mutations as Pathogenic, Benign, or Uncertain.
@@ -234,7 +235,7 @@ async def run_task(task_id: int, task_name: str) -> None:
                obs, _, _ = parse_ws_response(reset_msg)
            except Exception as exc:
                logger.error("WS reset failed: %s", exc)
-               print(f"[END] success=false steps=0 rewards=", flush=True)
+               print(f"[END] success=false steps={step} score=0.00 rewards=", flush=True)
                return
 
 
@@ -305,13 +306,18 @@ async def run_task(task_id: int, task_name: str) -> None:
    except Exception as exc:
        logger.error("WebSocket connection error for %s: %s", task_name, exc)
        if not rewards:
-           print(f"[END] success=false steps={step} rewards=", flush=True)
+           print(f"[END] success=false steps={step} score=0.00 rewards=", flush=True)
            return
 
+   score = sum(rewards)
+   score = max(0.0, min(1.0, score))
 
    rewards_str = ",".join(f"{r:.2f}" for r in rewards)
-   print(f"[END] success={str(success).lower()} steps={step} rewards={rewards_str}", flush=True)
-
+   print(
+    f"[END] success={str(success).lower()} steps={step} "
+    f"score={score:.2f} rewards={rewards_str}",
+    flush=True,
+)
 
 
 

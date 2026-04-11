@@ -17,7 +17,7 @@ WORKDIR /app
 
 # Ensure git is available (required for installing dependencies from VCS)
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends git && \
+    apt-get install -y --no-install-recommends git curl && \
     rm -rf /var/lib/apt/lists/*
 
 # Build argument to control whether we're building standalone or in-repo
@@ -37,7 +37,7 @@ RUN if ! command -v uv >/dev/null 2>&1; then \
         mv /root/.local/bin/uv /usr/local/bin/uv && \
         mv /root/.local/bin/uvx /usr/local/bin/uvx; \
     fi
-    
+
 # Install dependencies using uv sync
 # If uv.lock exists, use it; otherwise resolve on the fly
 RUN --mount=type=cache,target=/root/.cache/uv \
@@ -58,7 +58,10 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 FROM ${BASE_IMAGE}
 
 WORKDIR /app
-RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl && \
+    rm -rf /var/lib/apt/lists/*
 
 # Copy the virtual environment from builder
 COPY --from=builder /app/env/.venv /app/.venv
@@ -66,15 +69,21 @@ COPY --from=builder /app/env/.venv /app/.venv
 # Copy the environment code
 COPY --from=builder /app/env /app/env
 
-# Set PATH to use the virtual environment
-ENV PATH="/app/.venv/bin:$PATH"
+# Runtime env vars
+ENV PATH="/app/.venv/bin:$PATH" \
+    PYTHONPATH="/app/env:$PYTHONPATH" \
+    PYTHONUNBUFFERED=1 \
+    PORT=7860
 
-# Set PYTHONPATH so imports work correctly
-ENV PYTHONPATH="/app/env:$PYTHONPATH"
+# HF Spaces Docker expects app to be reachable on this port
+EXPOSE 7860
 
-# Health check
-HEALTHCHECK CMD curl -f http://localhost:7860/schema || exit 1
+# Health check should validate readiness of the environment API
+# (Hackathon checks usually ping /reset)
+HEALTHCHECK --interval=30s --timeout=5s --retries=5 CMD \
+  curl -fsS -X POST http://localhost:${PORT}/reset \
+  -H "Content-Type: application/json" \
+  -d '{}' || exit 1
 
 # Run the FastAPI server
-# The module path is constructed to work with the /app/env structure
-CMD ["sh", "-c", "cd /app/env && uvicorn server.app:app --host 0.0.0.0 --port 7860"]
+CMD ["sh", "-c", "cd /app/env && uvicorn server.app:app --host 0.0.0.0 --port ${PORT}"]

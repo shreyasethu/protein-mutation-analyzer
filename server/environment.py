@@ -131,7 +131,20 @@ class ProteinMutationAnalyzerEnvironment(OpenEnvEnvironment):
                 result = call_model(self._state.sequence_context)
                 if result:
                     score = len(result) % 5 - 2
-                    self._state.conservation_result = ConservationToolOutput(phylop_score=score)
+                    level = "high" if abs(score) >= 3 else "medium" if abs(score) >= 1 else "low"
+                    interpretation = (
+                        "Highly conserved position"
+                        if level == "high"
+                        else "Moderately conserved"
+                        if level == "medium"
+                        else "Weak conservation"
+                    )
+
+                    self._state.conservation_result = ConservationToolOutput(
+                        phylop_score=score,
+                        conservation_level=level,
+                        interpretation=interpretation,
+                    )
                 else:
                     self._state.conservation_result = local_conservation(mutation_id)
 
@@ -139,7 +152,21 @@ class ProteinMutationAnalyzerEnvironment(OpenEnvEnvironment):
                 result = call_model(self._state.sequence_context)
                 if result:
                     ddg = len(result) % 4 - 2
-                    self._state.structure_result = StructureToolOutput(ddg_estimate=ddg)
+
+                    if ddg < -1.0:
+                        impact = "destabilizing"
+                    elif ddg > 1.0:
+                        impact = "stabilizing"
+                    else:
+                        impact = "neutral"
+
+                    confidence = "high" if abs(ddg) > 1.5 else "medium" if abs(ddg) > 0.5 else "low"
+
+                    self._state.structure_result = StructureToolOutput(
+                        ddg_estimate=ddg,
+                        stability_impact=impact,
+                        confidence=confidence,
+                    )
                 else:
                     self._state.structure_result = local_structure(mutation_id)
 
@@ -147,7 +174,16 @@ class ProteinMutationAnalyzerEnvironment(OpenEnvEnvironment):
                 result = call_model(self._state.sequence_context)
                 if result:
                     flag = len(result) % 2 == 0
-                    self._state.domain_result = DomainToolOutput(is_critical=flag)
+
+                    self._state.domain_result = DomainToolOutput(
+                        domain_name="UnknownDomain",
+                        is_critical=flag,
+                        function_description=(
+                            "Critical functional region"
+                            if flag
+                            else "Non-critical region"
+                        ),
+                    )
                 else:
                     self._state.domain_result = local_domain(mutation_id)
 
@@ -208,7 +244,6 @@ class ProteinMutationAnalyzerEnvironment(OpenEnvEnvironment):
         GLOBAL_STATE["state"] = self._state
         return self._to_observation(reward=round(step_reward, 4))
 
-    @property
     def state(self):
         s = GLOBAL_STATE.get("state")
         if s is None:
@@ -221,6 +256,8 @@ class ProteinMutationAnalyzerEnvironment(OpenEnvEnvironment):
 
     def _to_observation(self, reward=None):
         s = self._state
+        if reward is not None:
+            reward = max(0.0, min(1.0, float(reward)))
         return ProteinMutationAnalyzerObservation(
             mutation_id=s.mutation_id,
             gene=s.gene,
