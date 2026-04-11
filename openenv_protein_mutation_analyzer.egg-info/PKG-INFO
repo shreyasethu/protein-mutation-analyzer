@@ -1,0 +1,12 @@
+Metadata-Version: 2.4
+Name: openenv-protein_mutation_analyzer
+Version: 0.1.0
+Summary: Protein Mutation Analyzer environment for OpenEnv
+Requires-Python: >=3.10
+Requires-Dist: huggingface-hub>=1.10.1
+Requires-Dist: openenv-core[core]>=0.2.2
+Requires-Dist: pandas>=2.3.3
+Requires-Dist: requests>=2.33.1
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0.0; extra == "dev"
+Requires-Dist: pytest-cov>=4.0.0; extra == "dev"

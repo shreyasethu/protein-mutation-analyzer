@@ -1,0 +1,12 @@
+name: protein-mutation-analyzer
+version: 1.0.0
+description: Clinical protein mutation pathogenicity analysis environment
+author: your-name
+license: MIT
+tags:
+  - openenv
+  - protein-analysis
+  - medical-ai
+runtime:
+  type: docker
+  port: 8000
