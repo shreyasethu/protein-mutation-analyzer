@@ -131,7 +131,20 @@ class ProteinMutationAnalyzerEnvironment(OpenEnvEnvironment):
                 result = call_model(self._state.sequence_context)
                 if result:
                     score = len(result) % 5 - 2
-                    self._state.conservation_result = ConservationToolOutput(phylop_score=score)
+                    if score < -2.0:
+                        level = "high"
+                        interp = f"PhyloP of {score:.3f} indicates high evolutionary conservation — changes at this position are likely damaging."
+                    elif score < -0.5:
+                        level = "medium"
+                        interp = f"PhyloP of {score:.3f} indicates moderate conservation — interpret alongside structural and domain data."
+                    else:
+                        level = "low"
+                        interp = f"PhyloP of {score:.3f} indicates low conservation — this position tolerates variation across species."
+                    self._state.conservation_result = ConservationToolOutput(
+                        phylop_score=score,
+                        conservation_level=level,
+                        interpretation=interp,
+                    )
                 else:
                     self._state.conservation_result = local_conservation(mutation_id)
 
@@ -139,7 +152,23 @@ class ProteinMutationAnalyzerEnvironment(OpenEnvEnvironment):
                 result = call_model(self._state.sequence_context)
                 if result:
                     ddg = len(result) % 4 - 2
-                    self._state.structure_result = StructureToolOutput(ddg_estimate=ddg)
+                    if ddg < -2.0:
+                        impact = "destabilizing"
+                        confidence = "high"
+                    elif ddg < -0.5:
+                        impact = "destabilizing"
+                        confidence = "medium"
+                    elif ddg <= 0.5:
+                        impact = "neutral"
+                        confidence = "medium"
+                    else:
+                        impact = "stabilizing"
+                        confidence = "low"
+                    self._state.structure_result = StructureToolOutput(
+                        ddg_estimate=ddg,
+                        stability_impact=impact,
+                        confidence=confidence,
+                    )
                 else:
                     self._state.structure_result = local_structure(mutation_id)
 
@@ -147,7 +176,11 @@ class ProteinMutationAnalyzerEnvironment(OpenEnvEnvironment):
                 result = call_model(self._state.sequence_context)
                 if result:
                     flag = len(result) % 2 == 0
-                    self._state.domain_result = DomainToolOutput(is_critical=flag)
+                    self._state.domain_result = DomainToolOutput(
+                        domain_name="functional domain",
+                        is_critical=flag,
+                        function_description="Functional domain with established role in protein activity and disease.",
+                    )
                 else:
                     self._state.domain_result = local_domain(mutation_id)
 

@@ -1,7 +1,7 @@
 name: protein-mutation-analyzer
 version: 1.0.0
 description: Clinical protein mutation pathogenicity analysis environment
-author: your-name
+author: shreyasethu
 license: MIT
 tags:
   - openenv
@@ -9,4 +9,30 @@ tags:
   - medical-ai
 runtime:
   type: docker
-  port: 8000
+  port: 7860
+tasks:
+  - id: task_tier_1_easy
+    name: Easy — Single-Signal Mutations
+    description: >
+      Mutations where a single tool (conservation OR structure OR domain) provides
+      a clear, unambiguous pathogenicity signal. The agent should identify the
+      dominant signal with one or two tool calls and submit the correct verdict.
+    difficulty: easy
+    task_id: 1
+  - id: task_tier_2_medium
+    name: Medium — Multi-Signal Mutations
+    description: >
+      Mutations requiring two tools to reach a confident verdict. Signals may
+      partially conflict, so the agent must weigh conservation and structural
+      stability together before classifying as Pathogenic, Benign, or Uncertain.
+    difficulty: medium
+    task_id: 2
+  - id: task_tier_3_hard
+    name: Hard — Combined/Ambiguous Mutations
+    description: >
+      Mutations where all three evidence streams (conservation, structural
+      stability, domain criticality) must be considered. Signals may be
+      contradictory; the agent is expected to integrate all evidence and may
+      need to classify as Uncertain when data is genuinely ambiguous.
+    difficulty: hard
+    task_id: 3
