@@ -229,6 +229,11 @@ async def run_task(task_id, task_name):
         logger.error("WS error: %s", e)
         log_end(False, step, 0.0, [])
         return
+    
+    if rewards and rewards[-1] == 0.0:
+        final_reward = obs.get("reward")
+        if final_reward is not None:
+            rewards[-1] = float(final_reward)
 
     # SCORE
     score = sum(rewards) / MAX_TOTAL_REWARD
