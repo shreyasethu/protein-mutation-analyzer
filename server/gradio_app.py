@@ -10,6 +10,13 @@ def post(path, payload):
         r = requests.post(f"{BASE}{path}", json=payload, timeout=10)
         r.raise_for_status()
         return r.json()
+    except requests.HTTPError as e:
+        detail = ""
+        try:
+            detail = e.response.text
+        except Exception:
+            pass
+        return {"error": f"{e} | body={detail}"}
     except Exception as e:
         return {"error": str(e)}
 
@@ -82,11 +89,14 @@ def dashboard_tab():
         current_steps = log_text.count("→") if log_text else 0
         tool = tools[current_steps % len(tools)]
 
-        # ✅ FIXED PAYLOAD
-        res = post("/step", {
-            "tool_name": tool,
-            "tool_input": {"mutation_id": mid}
-        })
+        payload = {
+            "action": {
+                "tool_name": tool,
+                "tool_input": {"mutation_id": mid}
+            }
+        }
+
+        res = post("/step", payload)
 
         if "error" in res:
             log_text = append_log(log_text, f"❌ {res['error']}")
@@ -148,14 +158,15 @@ def control_tab():
         if not mid:
             return state, "❌ Reset first"
 
-        # ✅ FIXED PAYLOAD
         payload = {
-            "tool_name": tool,
-            "tool_input": {"mutation_id": mid}
+            "action": {
+                "tool_name": tool,
+                "tool_input": {"mutation_id": mid}
+            }
         }
 
         if tool == "submit_verdict":
-            payload["tool_input"]["verdict"] = verdict
+            payload["action"]["tool_input"]["verdict"] = verdict.lower()
 
         res = post("/step", payload)
 
@@ -195,14 +206,15 @@ def demo_tab():
             "get_domain_annotation",
             "submit_verdict",
         ]:
-            # ✅ FIXED PAYLOAD
             payload = {
-                "tool_name": tool,
-                "tool_input": {"mutation_id": mid}
+                "action": {
+                    "tool_name": tool,
+                    "tool_input": {"mutation_id": mid}
+                }
             }
 
             if tool == "submit_verdict":
-                payload["tool_input"]["verdict"] = "Pathogenic"
+                payload["action"]["tool_input"]["verdict"] = "pathogenic"
 
             res = post("/step", payload)
 
