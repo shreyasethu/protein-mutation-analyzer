@@ -41,6 +41,8 @@ The agent interacts using structured tool calls. Each action incurs a cost and c
   "tool_input": {"mutation_id": "PROT-123"}
 }
 
+
+---
 ## 2. Observation Space
 The observation progressively reveals information as the agent explores:
 * **Mutation Metadata:** Gene name, position, and amino acids.
