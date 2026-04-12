@@ -651,7 +651,7 @@ def demo_tab():
 
         return text
 
-    gr.Button("*  RUN PIPELINE", variant="primary", size="lg").click(run, outputs=output)
+    gr.Button("   RUN PIPELINE", variant="primary", size="lg").click(run, outputs=output)
 
 
 # ── App ───────────────────────────────────────────────────────────────────
