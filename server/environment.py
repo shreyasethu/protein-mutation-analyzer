@@ -24,11 +24,8 @@ from server.tools.verdict import submit_verdict
 from openenv.core.env_server.interfaces import Environment as OpenEnvEnvironment
 
 
-# ───────── GLOBAL STATE STORE (FIX) ─────────
 GLOBAL_STATE = {}
 
-
-# ───────── ENV CONFIG ─────────
 API_BASE_URL = os.getenv("API_BASE_URL")
 MODEL_NAME = os.getenv("MODEL_NAME")
 HF_TOKEN = os.getenv("HF_TOKEN")
@@ -54,8 +51,8 @@ def call_model(prompt: str):
         res = client.chat.completions.create(
             model=MODEL_NAME,
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.2,
-            max_tokens=50,
+            temperature=0.0,  # deterministic per spec
+            max_tokens=60,
         )
         return res.choices[0].message.content
     except Exception:
@@ -107,9 +104,7 @@ class ProteinMutationAnalyzerEnvironment(OpenEnvEnvironment):
             adversary_weakness_profile={},
         )
 
-        # 🔥 STORE STATE
         GLOBAL_STATE[self._state.mutation_id] = self._state
-
         return self._to_observation()
 
     # ───────── STEP ─────────
@@ -117,7 +112,6 @@ class ProteinMutationAnalyzerEnvironment(OpenEnvEnvironment):
         tool_input = action.tool_input or {}
         mutation_id = tool_input.get("mutation_id")
 
-        # 🔴 LOAD STATE FROM GLOBAL STORE
         if not mutation_id or mutation_id not in GLOBAL_STATE:
             raise RuntimeError("Call reset() before step()")
 
@@ -130,53 +124,46 @@ class ProteinMutationAnalyzerEnvironment(OpenEnvEnvironment):
         already_called = tool_name in self._state.tools_called
 
         try:
-            if tool_name == "get_conservation_score":
-                result = call_model(self._state.sequence_context)
-                if result:
-                    score = len(result) % 5 - 2
-                    level = "high" if abs(score) >= 3 else "medium" if abs(score) >= 1 else "low"
-                    interpretation = (
-                        "Highly conserved position"
-                        if level == "high"
-                        else "Moderately conserved"
-                        if level == "medium"
-                        else "Weak conservation"
-                    )
+            # ✅ REAL DATA + LLM INTERPRETATION
 
-                    self._state.conservation_result = ConservationToolOutput(
-                        phylop_score=score,
-                        conservation_level=level,
-                        interpretation=interpretation,
-                    )
-                else:
-                    self._state.conservation_result = local_conservation(mutation_id)
+            if tool_name == "get_conservation_score":
+                data = local_conservation(mutation_id)
+
+                explanation = call_model(
+                    f"Explain conservation impact briefly. Score: {data.phylop_score}"
+                )
+
+                self._state.conservation_result = ConservationToolOutput(
+                    phylop_score=data.phylop_score,
+                    conservation_level=data.conservation_level,
+                    interpretation=explanation or data.interpretation,
+                )
 
             elif tool_name == "get_ddg_estimate":
-                result = call_model(self._state.sequence_context)
-                if result:
-                    ddg = len(result) % 4 - 2
-                    impact = "destabilizing" if ddg < -1.0 else "stabilizing" if ddg > 1.0 else "neutral"
-                    confidence = "high" if abs(ddg) > 1.5 else "medium" if abs(ddg) > 0.5 else "low"
+                data = local_structure(mutation_id)
 
-                    self._state.structure_result = StructureToolOutput(
-                        ddg_estimate=ddg,
-                        stability_impact=impact,
-                        confidence=confidence,
-                    )
-                else:
-                    self._state.structure_result = local_structure(mutation_id)
+                explanation = call_model(
+                    f"Explain protein stability impact for ddg {data.ddg_estimate}"
+                )
+
+                self._state.structure_result = StructureToolOutput(
+                    ddg_estimate=data.ddg_estimate,
+                    stability_impact=data.stability_impact,
+                    confidence=data.confidence,
+                )
 
             elif tool_name == "get_domain_annotation":
-                result = call_model(self._state.sequence_context)
-                if result:
-                    flag = len(result) % 2 == 0
-                    self._state.domain_result = DomainToolOutput(
-                        domain_name="UnknownDomain",
-                        is_critical=flag,
-                        function_description="Critical functional region" if flag else "Non-critical region",
-                    )
-                else:
-                    self._state.domain_result = local_domain(mutation_id)
+                data = local_domain(mutation_id)
+
+                explanation = call_model(
+                    f"Explain functional importance of domain {data.domain_name}"
+                )
+
+                self._state.domain_result = DomainToolOutput(
+                    domain_name=data.domain_name,
+                    is_critical=data.is_critical,
+                    function_description=explanation or data.function_description,
+                )
 
             elif tool_name == "submit_verdict":
                 verdict = tool_input.get("verdict", "")
@@ -204,9 +191,9 @@ class ProteinMutationAnalyzerEnvironment(OpenEnvEnvironment):
 
         deciding = self._state.deciding_factor
 
-        # ───────── reward shaping ─────────
+        # ───────── reward ─────────
         if already_called:
-            step_reward = -0.15
+            step_reward = 0.0
         elif tool_name == "get_conservation_score":
             score = self._state.conservation_result.phylop_score
             step_reward = 0.08 if abs(score) > 2 else 0.02
@@ -224,7 +211,6 @@ class ProteinMutationAnalyzerEnvironment(OpenEnvEnvironment):
         else:
             step_reward = 0.01
 
-        # 🔥 SAVE UPDATED STATE
         GLOBAL_STATE[self._state.mutation_id] = self._state
 
         return self._to_observation(reward=round(step_reward, 4))

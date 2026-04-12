@@ -12,7 +12,7 @@ import websockets
 from openai import OpenAI
 
 
-# ── Config ──────────────────────────────────────────────────────────────
+# ── Config ─────────────────────────────────────────
 API_BASE_URL = os.getenv("API_BASE_URL", "https://api.groq.com/openai/v1")
 MODEL_NAME   = os.getenv("MODEL_NAME", "llama-3.3-70b-versatile")
 
@@ -25,6 +25,7 @@ WS_BASE_URL  = ENV_BASE_URL.replace("http://", "ws://").replace("https://", "wss
 
 ENV_NAME  = "protein-mutation-analyzer"
 MAX_STEPS = 6
+MAX_TOTAL_REWARD = 1.0
 
 VALID_TOOLS = {
     "get_conservation_score",
@@ -39,25 +40,29 @@ logger = logging.getLogger(__name__)
 client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
 
 
-# ── Prompt ──────────────────────────────────────────────────────────────
+# ── Prompt ─────────────────────────────────────────
 SYSTEM_PROMPT = """You are a computational biology agent.
+Decide next tool step.
 Return ONLY JSON:
 {"tool": "...", "input": {...}}
 """
 
 
-# ── LLM ─────────────────────────────────────────────────────────────────
+# ── LLM ────────────────────────────────────────────
 def call_llm(messages):
-    response = client.chat.completions.create(
-        model=MODEL_NAME,
-        messages=messages,
-        max_tokens=256,
-        temperature=0.0,
-    )
-    return response.choices[0].message.content.strip()
+    try:
+        response = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=messages,
+            max_tokens=200,
+            temperature=0.0,
+        )
+        return response.choices[0].message.content.strip()
+    except Exception:
+        return None
 
 
-# ── Parse ───────────────────────────────────────────────────────────────
+# ── Parse ──────────────────────────────────────────
 def parse_action(raw, mutation_id):
     try:
         parsed = json.loads(raw)
@@ -74,8 +79,23 @@ def parse_action(raw, mutation_id):
         return None
 
 
-# ── Deterministic fallback (FIX) ─────────────────────────────────────────
-def fallback_policy(step, mutation_id):
+# ── Smart fallback ─────────────────────────────────
+def choose_verdict(obs):
+    try:
+        if obs.get("structure_result"):
+            if obs["structure_result"]["ddg_estimate"] < -2:
+                return "Pathogenic"
+
+        if obs.get("conservation_result"):
+            if abs(obs["conservation_result"]["phylop_score"]) < 1:
+                return "Benign"
+
+        return "Uncertain"
+    except Exception:
+        return "Uncertain"
+
+
+def fallback_policy(step, mutation_id, obs):
     if step == 1:
         return {"tool_name": "get_conservation_score", "tool_input": {"mutation_id": mutation_id}}
     elif step == 2:
@@ -85,21 +105,27 @@ def fallback_policy(step, mutation_id):
     else:
         return {
             "tool_name": "submit_verdict",
-            "tool_input": {"mutation_id": mutation_id, "verdict": "Pathogenic"},
+            "tool_input": {
+                "mutation_id": mutation_id,
+                "verdict": choose_verdict(obs),
+            },
         }
 
 
-# ── Obs → text ──────────────────────────────────────────────────────────
+# ── Obs → text ─────────────────────────────────────
 def obs_to_message(obs):
     return f"""
 Mutation: {obs.get('mutation_id')}
 Gene: {obs.get('gene')}
 Steps: {obs.get('steps_taken')}
 Budget: {obs.get('budget_remaining')}
+Conservation: {obs.get('conservation_result')}
+Structure: {obs.get('structure_result')}
+Domain: {obs.get('domain_result')}
 """
 
 
-# ── WS helpers ──────────────────────────────────────────────────────────
+# ── WS helpers ─────────────────────────────────────
 async def ws_send_recv(ws, payload):
     await ws.send(json.dumps(payload))
     raw = await ws.recv()
@@ -114,7 +140,7 @@ def parse_ws(msg):
     return obs, reward, done
 
 
-# ── END logger ──────────────────────────────────────────────────────────
+# ── END logger ─────────────────────────────────────
 def log_end(success, step, score, rewards):
     rewards_str = ",".join(f"{r:.2f}" for r in rewards)
     print(
@@ -124,7 +150,7 @@ def log_end(success, step, score, rewards):
     )
 
 
-# ── Run task ────────────────────────────────────────────────────────────
+# ── Run task ───────────────────────────────────────
 async def run_task(task_id, task_name):
     print(f"[START] task={task_name} env={ENV_NAME} model={MODEL_NAME}", flush=True)
 
@@ -136,12 +162,8 @@ async def run_task(task_id, task_name):
         async with websockets.connect(f"{WS_BASE_URL}/ws") as ws:
 
             # RESET
-            try:
-                msg = await ws_send_recv(ws, {"type": "reset", "data": {"task_id": task_id}})
-                obs, _, _ = parse_ws(msg)
-            except Exception:
-                log_end(False, step, 0.0, [])
-                return
+            msg = await ws_send_recv(ws, {"type": "reset", "data": {"task_id": task_id}})
+            obs, _, _ = parse_ws(msg)
 
             mutation_id = obs.get("mutation_id", "unknown")
             messages = [{"role": "system", "content": SYSTEM_PROMPT}]
@@ -153,32 +175,22 @@ async def run_task(task_id, task_name):
 
                 # Try LLM
                 action = None
-                try:
-                    raw = call_llm(messages)
-                    parsed = parse_action(raw, mutation_id)
+                raw = call_llm(messages)
 
-                    # Avoid repeated useless calls
-                    if parsed and not (
-                        parsed["tool_name"] == "get_conservation_score" and step > 1
-                    ):
+                if raw:
+                    parsed = parse_action(raw, mutation_id)
+                    if parsed:
                         action = parsed
 
-                except Exception:
-                    pass
-
-                # Fallback if needed
+                # Fallback if LLM fails
                 if action is None:
-                    action = fallback_policy(step, mutation_id)
+                    action = fallback_policy(step, mutation_id, obs)
 
                 action_str = json.dumps(action)
 
                 # STEP
-                try:
-                    msg = await ws_send_recv(ws, {"type": "step", "data": action})
-                    obs, reward, done = parse_ws(msg)
-                except Exception:
-                    reward = 0.0
-                    done = False
+                msg = await ws_send_recv(ws, {"type": "step", "data": action})
+                obs, reward, done = parse_ws(msg)
 
                 rewards.append(reward)
 
@@ -197,13 +209,14 @@ async def run_task(task_id, task_name):
         log_end(False, step, 0.0, [])
         return
 
-    # SCORE
-    score = max(0.0, min(1.0, sum(rewards)))
+    # ── SCORE (FIXED) ──────────────────────────────
+    score = sum(rewards) / MAX_TOTAL_REWARD
+    score = min(max(score, 0.0), 1.0)
 
     log_end(success, step, score, rewards)
 
 
-# ── Main ────────────────────────────────────────────────────────────────
+# ── Main ──────────────────────────────────────────
 TASKS = [
     (1, "task_tier_1_easy"),
     (2, "task_tier_2_medium"),
