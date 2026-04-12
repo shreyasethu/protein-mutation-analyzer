@@ -276,15 +276,61 @@ def extract_reward(res):
     return res.get("reward") or res.get("observation", {}).get("reward")
 
 
+def create_protein_sequence(obs, sequence_length=50):
+    """Create an interactive protein sequence visualization"""
+    if not obs:
+        return ""
+    
+    ref_aa = obs.get("ref_aa", "?")
+    mut_aa = obs.get("mut_aa", "?")
+    position = obs.get("position", 0)
+    
+    # Create a visualization of the protein sequence
+    # Center the mutation in the middle of the sequence
+    start_pos = max(0, position - sequence_length // 2)
+    
+    boxes = []
+    for i in range(sequence_length):
+        pos = start_pos + i
+        is_mutation = (pos == position)
+        
+        if is_mutation:
+            # Mutation position - highlighted
+            boxes.append(f'''
+                <div class="aa-box mutated" 
+                     title="Position {pos}: {ref_aa} → {mut_aa} (MUTATION)">
+                    <div class="aa-label">{mut_aa}</div>
+                    <div class="aa-pos">{pos}</div>
+                </div>
+            ''')
+        else:
+            # Normal position
+            boxes.append(f'''
+                <div class="aa-box normal" 
+                     title="Position {pos}: Wild-type">
+                    <div class="aa-label">·</div>
+                    <div class="aa-pos">{pos}</div>
+                </div>
+            ''')
+    
+    return f'''
+    <div class="protein-sequence-container">
+        <div class="sequence-label">Protein Sequence Context</div>
+        <div class="protein-sequence">
+            {"".join(boxes)}
+        </div>
+        <div class="sequence-legend">
+            <span class="legend-item"><span class="legend-box normal-box"></span> Wild-type</span>
+            <span class="legend-item"><span class="legend-box mutated-box"></span> Mutated Position</span>
+        </div>
+    </div>
+    '''
+
+
 def create_protein_card(obs):
     """Create an interactive protein mutation card with visual styling"""
     if not obs:
-        return """
-        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 15px; text-align: center; color: white; box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
-            <h2 style="margin: 0; font-size: 24px;">🧬 No Mutation Loaded</h2>
-            <p style="margin-top: 10px; opacity: 0.9;">Click "Reset" to load a mutation</p>
-        </div>
-        """
+        return ""
     
     mutation_id = obs.get("mutation_id", "Unknown")
     gene = obs.get("gene", "Unknown")
@@ -299,11 +345,13 @@ def create_protein_card(obs):
     progress_pct = (steps_taken / step_budget * 100) if step_budget > 0 else 0
     progress_color = "#4ade80" if progress_pct < 50 else "#fbbf24" if progress_pct < 80 else "#f87171"
     
+    sequence_viz = create_protein_sequence(obs)
+    
     return f"""
-    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 15px; color: white; box-shadow: 0 10px 30px rgba(0,0,0,0.2); margin-bottom: 20px;">
+    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 25px; border-radius: 15px; color: white; box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
             <div>
-                <h2 style="margin: 0; font-size: 28px;">🧬 {gene}</h2>
+                <h2 style="margin: 0; font-size: 28px;">{gene}</h2>
                 <p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 14px;">ID: {mutation_id}</p>
             </div>
             <div style="background: rgba(255,255,255,0.2); padding: 15px 25px; border-radius: 10px; backdrop-filter: blur(10px);">
@@ -323,7 +371,9 @@ def create_protein_card(obs):
             </div>
         </div>
         
-        <div style="margin-bottom: 10px;">
+        {sequence_viz}
+        
+        <div style="margin-top: 20px;">
             <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 14px;">
                 <span>Analysis Progress</span>
                 <span>{steps_taken} / {step_budget} steps</span>
@@ -340,20 +390,20 @@ def create_tool_info_card():
     """Create an informative card explaining the tools"""
     return """
     <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); padding: 25px; border-radius: 15px; color: white; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
-        <h3 style="margin-top: 0; font-size: 22px;">🔬 Analysis Tools</h3>
+        <h3 style="margin-top: 0; font-size: 22px;">Analysis Tools</h3>
         
         <div style="background: rgba(255,255,255,0.15); padding: 15px; border-radius: 10px; margin-bottom: 12px; backdrop-filter: blur(10px);">
-            <div style="font-weight: bold; margin-bottom: 8px; font-size: 16px;">📊 Conservation Score</div>
+            <div style="font-weight: bold; margin-bottom: 8px; font-size: 16px;">Conservation Score</div>
             <div style="font-size: 14px; opacity: 0.95;">Measures how conserved the amino acid is across species. Higher conservation often means the position is functionally important.</div>
         </div>
         
         <div style="background: rgba(255,255,255,0.15); padding: 15px; border-radius: 10px; margin-bottom: 12px; backdrop-filter: blur(10px);">
-            <div style="font-weight: bold; margin-bottom: 8px; font-size: 16px;">⚡ ΔΔG Estimate</div>
+            <div style="font-weight: bold; margin-bottom: 8px; font-size: 16px;">ΔΔG Estimate</div>
             <div style="font-size: 14px; opacity: 0.95;">Predicts the change in protein stability. Large positive values suggest destabilizing mutations that may disrupt protein function.</div>
         </div>
         
         <div style="background: rgba(255,255,255,0.15); padding: 15px; border-radius: 10px; backdrop-filter: blur(10px);">
-            <div style="font-weight: bold; margin-bottom: 8px; font-size: 16px;">🎯 Domain Annotation</div>
+            <div style="font-weight: bold; margin-bottom: 8px; font-size: 16px;">Domain Annotation</div>
             <div style="font-size: 14px; opacity: 0.95;">Identifies which protein domain contains the mutation. Mutations in critical domains (e.g., binding sites) are more likely to be pathogenic.</div>
         </div>
     </div>
@@ -364,20 +414,20 @@ def create_reward_explainer():
     """Create a card explaining the reward system"""
     return """
     <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); padding: 25px; border-radius: 15px; color: #2d3748; box-shadow: 0 8px 25px rgba(0,0,0,0.15);">
-        <h3 style="margin-top: 0; font-size: 22px;">🎯 Reward System</h3>
+        <h3 style="margin-top: 0; font-size: 22px;">Reward System</h3>
         
         <div style="background: rgba(255,255,255,0.5); padding: 15px; border-radius: 10px; margin-bottom: 12px; backdrop-filter: blur(10px);">
-            <div style="font-weight: bold; margin-bottom: 8px; font-size: 16px;">✅ Positive Rewards</div>
+            <div style="font-weight: bold; margin-bottom: 8px; font-size: 16px;">Positive Rewards</div>
             <div style="font-size: 14px;">Earned when you correctly identify a pathogenic mutation or use tools efficiently. Higher rewards indicate better diagnostic accuracy!</div>
         </div>
         
         <div style="background: rgba(255,255,255,0.5); padding: 15px; border-radius: 10px; margin-bottom: 12px; backdrop-filter: blur(10px);">
-            <div style="font-weight: bold; margin-bottom: 8px; font-size: 16px;">❌ Negative Rewards</div>
+            <div style="font-weight: bold; margin-bottom: 8px; font-size: 16px;">Negative Rewards</div>
             <div style="font-size: 14px;">Applied when you make incorrect predictions or waste budget on unnecessary tools. Learn to balance thoroughness with efficiency!</div>
         </div>
         
         <div style="background: rgba(255,255,255,0.5); padding: 15px; border-radius: 10px; backdrop-filter: blur(10px);">
-            <div style="font-weight: bold; margin-bottom: 8px; font-size: 16px;">💰 Budget Management</div>
+            <div style="font-weight: bold; margin-bottom: 8px; font-size: 16px;">Budget Management</div>
             <div style="font-size: 14px;">Each tool use costs budget points. The goal is to make accurate predictions while conserving resources for future analyses.</div>
         </div>
     </div>
@@ -388,9 +438,14 @@ def create_reward_explainer():
 def dashboard_tab():
     state = gr.State({"mutation_id": None})
 
+    # Buttons at the top
+    with gr.Row():
+        reset_btn = gr.Button("Reset & Load New Mutation", variant="primary", size="lg", scale=1)
+        step_btn = gr.Button("Run Next Analysis Step", variant="secondary", size="lg", scale=1)
+
     with gr.Row():
         with gr.Column(scale=3):
-            protein_card = gr.HTML(value=create_protein_card(None), label=None)
+            protein_card = gr.HTML(value="", label=None)
         
         with gr.Column(scale=2):
             tool_info = gr.HTML(value=create_tool_info_card(), label=None)
@@ -401,7 +456,7 @@ def dashboard_tab():
         
         with gr.Column(scale=1):
             log = gr.Textbox(
-                label="📋 Step-by-Step Analysis Log",
+                label="Step-by-Step Analysis Log",
                 lines=14,
                 show_label=True,
                 placeholder="Analysis steps will appear here...",
@@ -416,14 +471,14 @@ def dashboard_tab():
         return (
             {"mutation_id": mid},
             create_protein_card(obs),
-            "🔄 Environment initialized\n✨ New mutation loaded and ready for analysis!\n"
+            "Environment initialized\nNew mutation loaded and ready for analysis!\n"
         )
 
     def step(state, log_text):
         mid = state["mutation_id"]
 
         if not mid:
-            return state, create_protein_card(None), "❌ Please reset first to load a mutation"
+            return state, create_protein_card(None), "Please reset first to load a mutation"
 
         tools = [
             "get_conservation_score",
@@ -433,13 +488,6 @@ def dashboard_tab():
 
         current_steps = log_text.count("→") if log_text else 0
         tool = tools[current_steps % len(tools)]
-        
-        # Tool emojis for better visualization
-        tool_emoji = {
-            "get_conservation_score": "📊",
-            "get_ddg_estimate": "⚡",
-            "get_domain_annotation": "🎯"
-        }
 
         payload = {
             "action": {
@@ -451,24 +499,19 @@ def dashboard_tab():
         res = post("/step", payload)
 
         if "error" in res:
-            return state, create_protein_card({}), append_log(log_text, f"❌ Error: {res['error']}")
+            return state, create_protein_card({}), append_log(log_text, f"Error: {res['error']}")
 
         obs = extract_obs(res)
         reward = extract_reward(res)
         
-        emoji = tool_emoji.get(tool, "🔧")
-        reward_emoji = "🎉" if reward and reward > 0 else "⚠️" if reward and reward < 0 else "➡️"
+        reward_indicator = "[+]" if reward and reward > 0 else "[-]" if reward and reward < 0 else "[=]"
         
         new_log = append_log(
             log_text,
-            f"{emoji} {tool.replace('_', ' ').title()}\n   {reward_emoji} Reward: {reward}\n"
+            f"{tool.replace('_', ' ').title()}\n   {reward_indicator} Reward: {reward}\n"
         )
 
         return state, create_protein_card(obs), new_log
-
-    with gr.Row():
-        reset_btn = gr.Button("🔄 Reset & Load New Mutation", variant="primary", size="lg")
-        step_btn = gr.Button("▶️ Run Next Analysis Step", variant="secondary", size="lg")
 
     reset_btn.click(
         reset,
@@ -487,7 +530,7 @@ def control_tab():
     
     gr.Markdown("""
     <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 12px; color: white; margin-bottom: 20px;">
-        <h2 style="margin: 0 0 10px 0;">🎮 Manual Control Panel</h2>
+        <h2 style="margin: 0 0 10px 0;">Manual Control Panel</h2>
         <p style="margin: 0; opacity: 0.9;">Take full control of the analysis pipeline. Choose which tools to run and submit your verdict.</p>
     </div>
     """)
@@ -497,7 +540,7 @@ def control_tab():
             tool = gr.Dropdown(
                 ["get_conservation_score", "get_ddg_estimate", "get_domain_annotation", "submit_verdict"],
                 value="get_conservation_score",
-                label="🔧 Select Analysis Tool",
+                label="Select Analysis Tool",
                 info="Choose which tool to execute on the current mutation"
             )
 
@@ -505,12 +548,12 @@ def control_tab():
             verdict = gr.Dropdown(
                 ["Pathogenic", "Benign", "Uncertain"],
                 value="Pathogenic",
-                label="⚖️ Pathogenicity Verdict",
+                label="Pathogenicity Verdict",
                 info="Your classification for this mutation"
             )
 
     log = gr.Textbox(
-        label="📊 Execution Log",
+        label="Execution Log",
         lines=12,
         placeholder="Execution results will appear here...",
         show_label=True
@@ -520,21 +563,14 @@ def control_tab():
         res = post("/reset", {})
         return (
             {"mutation_id": extract_obs(res).get("mutation_id")},
-            "🔄 Environment reset complete\n✨ New mutation loaded!\n"
+            "Environment reset complete\nNew mutation loaded!\n"
         )
 
     def step(tool, verdict, state, log_text):
         mid = state["mutation_id"]
 
         if not mid:
-            return state, "❌ Please reset first to load a mutation\n"
-
-        tool_emoji = {
-            "get_conservation_score": "📊",
-            "get_ddg_estimate": "⚡",
-            "get_domain_annotation": "🎯",
-            "submit_verdict": "⚖️"
-        }
+            return state, "Please reset first to load a mutation\n"
 
         payload = {
             "action": {
@@ -549,25 +585,24 @@ def control_tab():
         res = post("/step", payload)
 
         if "error" in res:
-            return state, append_log(log_text, f"❌ Error: {res['error']}\n")
+            return state, append_log(log_text, f"Error: {res['error']}\n")
 
         reward = extract_reward(res)
-        emoji = tool_emoji.get(tool, "🔧")
-        reward_emoji = "🎉" if reward and reward > 0 else "⚠️" if reward and reward < 0 else "➡️"
+        reward_indicator = "[+]" if reward and reward > 0 else "[-]" if reward and reward < 0 else "[=]"
         
         new_log = append_log(
             log_text,
-            f"{emoji} {tool.replace('_', ' ').title()}\n   {reward_emoji} Reward: {reward}\n"
+            f"{tool.replace('_', ' ').title()}\n   {reward_indicator} Reward: {reward}\n"
         )
 
         return state, new_log
 
     with gr.Row():
-        gr.Button("🔄 Reset Environment", variant="secondary", size="lg").click(
+        gr.Button("Reset Environment", variant="secondary", size="lg").click(
             reset,
             outputs=[state, log]
         )
-        gr.Button("▶️ Execute Action", variant="primary", size="lg").click(
+        gr.Button("Execute Action", variant="primary", size="lg").click(
             step,
             inputs=[tool, verdict, state, log],
             outputs=[state, log]
@@ -578,13 +613,13 @@ def control_tab():
 def demo_tab():
     gr.Markdown("""
     <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); padding: 20px; border-radius: 12px; color: white; margin-bottom: 20px;">
-        <h2 style="margin: 0 0 10px 0;">🚀 Automated Pipeline Demo</h2>
+        <h2 style="margin: 0 0 10px 0;">Automated Pipeline Demo</h2>
         <p style="margin: 0; opacity: 0.9;">Watch the complete analysis pipeline run automatically from start to finish!</p>
     </div>
     """)
     
     output = gr.Textbox(
-        label="🔬 Pipeline Execution Log",
+        label="Pipeline Execution Log",
         lines=15,
         placeholder="Click 'Run Full Pipeline' to start the automated analysis...",
         show_label=True
@@ -594,13 +629,13 @@ def demo_tab():
         res = post("/reset", {})
         mid = extract_obs(res).get("mutation_id")
 
-        text = f"🧬 Starting automated analysis pipeline\n📋 Mutation ID: {mid}\n\n"
+        text = f"Starting automated analysis pipeline\nMutation ID: {mid}\n\n"
 
         tools = [
-            ("get_conservation_score", "📊 Conservation Analysis"),
-            ("get_ddg_estimate", "⚡ Stability Prediction"),
-            ("get_domain_annotation", "🎯 Domain Mapping"),
-            ("submit_verdict", "⚖️ Final Verdict"),
+            ("get_conservation_score", "Conservation Analysis"),
+            ("get_ddg_estimate", "Stability Prediction"),
+            ("get_domain_annotation", "Domain Mapping"),
+            ("submit_verdict", "Final Verdict"),
         ]
 
         for tool, display_name in tools:
@@ -617,20 +652,20 @@ def demo_tab():
             res = post("/step", payload)
 
             if "error" in res:
-                return text + f"❌ Pipeline failed: {res['error']}\n"
+                return text + f"Pipeline failed: {res['error']}\n"
 
             reward = extract_reward(res)
-            reward_emoji = "🎉" if reward and reward > 0 else "⚠️" if reward and reward < 0 else "➡️"
+            reward_indicator = "[+]" if reward and reward > 0 else "[-]" if reward and reward < 0 else "[=]"
             
-            text += f"{display_name}\n   {reward_emoji} Reward: {reward}\n\n"
+            text += f"{display_name}\n   {reward_indicator} Reward: {reward}\n\n"
 
             if res.get("done"):
-                text += "✅ Analysis complete!\n"
+                text += "Analysis complete!\n"
                 break
 
         return text
 
-    gr.Button("🚀 Run Full Pipeline", variant="primary", size="lg").click(
+    gr.Button("Run Full Pipeline", variant="primary", size="lg").click(
         run,
         outputs=output
     )
@@ -671,6 +706,123 @@ def create_app():
         border: none !important;
     }
     
+    /* Protein sequence styling */
+    .protein-sequence-container {
+        margin-top: 20px;
+        padding: 15px;
+        background: rgba(255,255,255,0.1);
+        border-radius: 10px;
+        backdrop-filter: blur(10px);
+    }
+    
+    .sequence-label {
+        font-size: 14px;
+        font-weight: 600;
+        margin-bottom: 12px;
+        opacity: 0.95;
+    }
+    
+    .protein-sequence {
+        display: flex;
+        gap: 3px;
+        overflow-x: auto;
+        padding: 10px 0;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(255,255,255,0.3) transparent;
+    }
+    
+    .protein-sequence::-webkit-scrollbar {
+        height: 6px;
+    }
+    
+    .protein-sequence::-webkit-scrollbar-track {
+        background: rgba(255,255,255,0.1);
+        border-radius: 3px;
+    }
+    
+    .protein-sequence::-webkit-scrollbar-thumb {
+        background: rgba(255,255,255,0.3);
+        border-radius: 3px;
+    }
+    
+    .aa-box {
+        min-width: 35px;
+        height: 50px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        position: relative;
+    }
+    
+    .aa-box.normal {
+        background: rgba(255,255,255,0.15);
+    }
+    
+    .aa-box.mutated {
+        background: linear-gradient(135deg, #fbbf24 0%, #f97316 100%);
+        box-shadow: 0 0 15px rgba(251, 191, 36, 0.5);
+        animation: pulse 2s ease-in-out infinite;
+    }
+    
+    .aa-box:hover {
+        transform: translateY(-3px) scale(1.05);
+        box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        z-index: 10;
+    }
+    
+    .aa-label {
+        font-size: 16px;
+        font-weight: bold;
+        font-family: monospace;
+    }
+    
+    .aa-pos {
+        font-size: 9px;
+        opacity: 0.7;
+        margin-top: 2px;
+    }
+    
+    .sequence-legend {
+        display: flex;
+        gap: 20px;
+        margin-top: 12px;
+        font-size: 12px;
+        opacity: 0.9;
+    }
+    
+    .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    
+    .legend-box {
+        width: 20px;
+        height: 20px;
+        border-radius: 4px;
+    }
+    
+    .legend-box.normal-box {
+        background: rgba(255,255,255,0.15);
+    }
+    
+    .legend-box.mutated-box {
+        background: linear-gradient(135deg, #fbbf24 0%, #f97316 100%);
+    }
+    
+    @keyframes pulse {
+        0%, 100% {
+            box-shadow: 0 0 15px rgba(251, 191, 36, 0.5);
+        }
+        50% {
+            box-shadow: 0 0 25px rgba(251, 191, 36, 0.8);
+        }
+    }
+    
     .tabs {
         border-radius: 12px !important;
     }
@@ -682,7 +834,7 @@ def create_app():
     }
     """
 
-    with gr.Blocks(title="MutantBench 🧬", css=custom_css, theme=gr.themes.Soft(
+    with gr.Blocks(title="MutantBench", css=custom_css, theme=gr.themes.Soft(
         primary_hue="purple",
         secondary_hue="pink",
         neutral_hue="slate",
@@ -690,25 +842,25 @@ def create_app():
     )) as app:
         gr.Markdown("""
         <div style="text-align: center; padding: 30px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 15px; margin-bottom: 30px; color: white;">
-            <h1 style="margin: 0; font-size: 48px; font-weight: 800;">🧬 MutantBench</h1>
+            <h1 style="margin: 0; font-size: 48px; font-weight: 800;">MutantBench</h1>
             <p style="margin: 10px 0 0 0; font-size: 20px; opacity: 0.95;">AI-Powered Protein Mutation Analysis Platform</p>
             <p style="margin: 10px 0 0 0; font-size: 14px; opacity: 0.8;">Analyze pathogenic mutations using conservation scores, stability predictions, and domain annotations</p>
         </div>
         """)
 
         with gr.Tabs():
-            with gr.Tab("📊 Dashboard", id="dashboard"):
+            with gr.Tab("Dashboard", id="dashboard"):
                 dashboard_tab()
             
-            with gr.Tab("🎮 Manual Control", id="control"):
+            with gr.Tab("Manual Control", id="control"):
                 control_tab()
             
-            with gr.Tab("🚀 Auto Demo", id="demo"):
+            with gr.Tab("Auto Demo", id="demo"):
                 demo_tab()
 
         gr.Markdown("""
         <div style="text-align: center; padding: 20px; margin-top: 30px; border-top: 1px solid #e5e7eb; color: #6b7280; font-size: 14px;">
-            <p style="margin: 0;">Built with ❤️ for protein mutation analysis | Powered by MutantBench</p>
+            <p style="margin: 0;">Built with care for protein mutation analysis | Powered by MutantBench</p>
         </div>
         """)
 
