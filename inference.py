@@ -207,13 +207,19 @@ async def run_task(task_id, task_name):
                 msg = await ws_send_recv(ws, {"type": "step", "data": action})
                 obs, reward, done = parse_ws(msg)
 
+                if done and (reward is None or reward == 0.0):
+                    reward = obs.get("reward", reward)
+
                 rewards.append(reward)
 
+                display_reward = f"{reward:.2f}" if isinstance(reward, (int, float)) else "None"
+
+
                 print(
-                    f"[STEP] step={step} action={action_str} "
-                    f"reward={reward:.2f} done={str(done).lower()} error=null",
-                    flush=True,
-                )
+    f"[STEP] step={step} action={action_str} "
+    f"reward={display_reward} done={str(done).lower()} error=null",
+    flush=True,
+)
 
                 if done:
                     success = reward > 0
