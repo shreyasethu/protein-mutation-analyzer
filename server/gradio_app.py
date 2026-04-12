@@ -547,6 +547,12 @@ def dashboard_tab():
 
         return new_state, create_protein_card(obs), new_log
 
+    with gr.Row():
+            reset_btn = gr.Button("⟳  INITIALIZE", variant="primary",   size="lg")
+            step_btn  = gr.Button("▶  RUN STEP",   variant="secondary", size="lg")
+
+            reset_btn.click(reset, outputs=[state, protein_card, log])
+            step_btn.click(step,   inputs=[state, log], outputs=[state, protein_card, log])
 
 def control_tab():
     state = gr.State({"mutation_id": None})
