@@ -541,8 +541,8 @@ def dashboard_tab():
         new_state = {"mutation_id": mid, "steps": new_steps}
 
         if new_steps >= 6:
-            final_res    = post("/step", {"action": {"tool_name": "submit_verdict", "tool_input": {"mutation_id": mid, "verdict": "Uncertain"}}})
-            new_log = append_log(new_log, f"\n↺ Reset to analyze a new gene target\n")
+            #final_res    = post("/step", {"action": {"tool_name": "submit_verdict", "tool_input": {"mutation_id": mid, "verdict": "Uncertain"}}})
+            new_log = append_log(new_log, f"↺ Reset to analyze a new gene target\n")
 
         return new_state, create_protein_card(obs), new_log
 
