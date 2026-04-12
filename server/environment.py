@@ -24,6 +24,10 @@ from server.tools.verdict import submit_verdict
 from openenv.core.env_server.interfaces import Environment as OpenEnvEnvironment
 
 
+# ───────── GLOBAL STATE STORE (FIX) ─────────
+GLOBAL_STATE = {}
+
+
 # ───────── ENV CONFIG ─────────
 API_BASE_URL = os.getenv("API_BASE_URL")
 MODEL_NAME = os.getenv("MODEL_NAME")
@@ -103,24 +107,26 @@ class ProteinMutationAnalyzerEnvironment(OpenEnvEnvironment):
             adversary_weakness_profile={},
         )
 
+        # 🔥 STORE STATE
+        GLOBAL_STATE[self._state.mutation_id] = self._state
+
         return self._to_observation()
 
     # ───────── STEP ─────────
     def step(self, action, timeout_s=None, **kwargs):
-        # 🔴 HARD FIX: auto-reset if missing (prevents crash)
-        if self._state is None:
-            self.reset()
+        tool_input = action.tool_input or {}
+        mutation_id = tool_input.get("mutation_id")
+
+        # 🔴 LOAD STATE FROM GLOBAL STORE
+        if not mutation_id or mutation_id not in GLOBAL_STATE:
+            raise RuntimeError("Call reset() before step()")
+
+        self._state = GLOBAL_STATE[mutation_id]
 
         if self._state.episode_done:
             return self._to_observation()
 
         tool_name = action.tool_name or ""
-        tool_input = action.tool_input or {}
-
-        if tool_name not in TOOL_COSTS:
-            return self._to_observation()
-
-        mutation_id = self._state.mutation_id
         already_called = tool_name in self._state.tools_called
 
         try:
@@ -149,7 +155,6 @@ class ProteinMutationAnalyzerEnvironment(OpenEnvEnvironment):
                 result = call_model(self._state.sequence_context)
                 if result:
                     ddg = len(result) % 4 - 2
-
                     impact = "destabilizing" if ddg < -1.0 else "stabilizing" if ddg > 1.0 else "neutral"
                     confidence = "high" if abs(ddg) > 1.5 else "medium" if abs(ddg) > 0.5 else "low"
 
@@ -165,7 +170,6 @@ class ProteinMutationAnalyzerEnvironment(OpenEnvEnvironment):
                 result = call_model(self._state.sequence_context)
                 if result:
                     flag = len(result) % 2 == 0
-
                     self._state.domain_result = DomainToolOutput(
                         domain_name="UnknownDomain",
                         is_critical=flag,
@@ -219,6 +223,9 @@ class ProteinMutationAnalyzerEnvironment(OpenEnvEnvironment):
                 step_reward += 0.05
         else:
             step_reward = 0.01
+
+        # 🔥 SAVE UPDATED STATE
+        GLOBAL_STATE[self._state.mutation_id] = self._state
 
         return self._to_observation(reward=round(step_reward, 4))
 
