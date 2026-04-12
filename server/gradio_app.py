@@ -1,7 +1,7 @@
 import gradio as gr
 import requests
-
 import os
+
 BASE = os.getenv("ENV_BASE_URL", "http://127.0.0.1:7860")
 
 
@@ -73,26 +73,24 @@ def dashboard_tab():
         if not mid:
             return state, "-", "-", "-", "-", "-", "-", "❌ Reset first"
 
-        # ✅ FIX: rotate tools instead of always using one
         tools = [
             "get_conservation_score",
             "get_ddg_estimate",
             "get_domain_annotation"
         ]
 
-        # get current step count from last state
-        current_steps = 0
-        if log_text:
-            current_steps = log_text.count("→")
-
+        current_steps = log_text.count("→") if log_text else 0
         tool = tools[current_steps % len(tools)]
 
+        # ✅ FIXED PAYLOAD
         res = post("/step", {
-            "action": {
-                "tool_name": tool,
-                "tool_input": {"mutation_id": mid}
-            }
+            "tool_name": tool,
+            "tool_input": {"mutation_id": mid}
         })
+
+        if "error" in res:
+            log_text = append_log(log_text, f"❌ {res['error']}")
+            return state, *format_summary({}), log_text
 
         obs = extract_obs(res)
         reward = res.get("reward")
@@ -150,17 +148,20 @@ def control_tab():
         if not mid:
             return state, "❌ Reset first"
 
+        # ✅ FIXED PAYLOAD
         payload = {
-            "action": {
-                "tool_name": tool,
-                "tool_input": {"mutation_id": mid}
-            }
+            "tool_name": tool,
+            "tool_input": {"mutation_id": mid}
         }
 
         if tool == "submit_verdict":
-            payload["action"]["tool_input"]["verdict"] = verdict
+            payload["tool_input"]["verdict"] = verdict
 
         res = post("/step", payload)
+
+        if "error" in res:
+            log_text = append_log(log_text, f"❌ {res['error']}")
+            return state, log_text
 
         log_text = append_log(
             log_text,
@@ -194,17 +195,21 @@ def demo_tab():
             "get_domain_annotation",
             "submit_verdict",
         ]:
+            # ✅ FIXED PAYLOAD
             payload = {
-                "action": {
-                    "tool_name": tool,
-                    "tool_input": {"mutation_id": mid}
-                }
+                "tool_name": tool,
+                "tool_input": {"mutation_id": mid}
             }
 
             if tool == "submit_verdict":
-                payload["action"]["tool_input"]["verdict"] = "Pathogenic"
+                payload["tool_input"]["verdict"] = "Pathogenic"
 
             res = post("/step", payload)
+
+            if "error" in res:
+                text += f"❌ {res['error']}\n"
+                break
+
             text += f"{tool} → reward {res.get('reward')}\n"
 
             if res.get("done"):
