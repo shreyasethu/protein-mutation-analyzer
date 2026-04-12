@@ -10,6 +10,13 @@ def post(path, payload):
         r = requests.post(f"{BASE}{path}", json=payload, timeout=10)
         r.raise_for_status()
         return r.json()
+    except requests.HTTPError as e:
+        detail = ""
+        try:
+            detail = e.response.text
+        except Exception:
+            pass
+        return {"error": f"{e} | body={detail}"}
     except Exception as e:
         return {"error": str(e)}
 
@@ -37,6 +44,10 @@ def append_log(log, text):
     return log + "\n" + text if log else text
 
 
+def extract_reward(res):
+    return res.get("reward") or res.get("observation", {}).get("reward")
+
+
 # ------------------ Dashboard ------------------ #
 def dashboard_tab():
     state = gr.State({"mutation_id": None})
@@ -59,13 +70,7 @@ def dashboard_tab():
         obs = extract_obs(res)
         mid = obs.get("mutation_id")
 
-        summary = format_summary(obs)
-
-        return (
-            {"mutation_id": mid},
-            *summary,
-            "Initialized\n"
-        )
+        return {"mutation_id": mid}, *format_summary(obs), "Initialized\n"
 
     def step(state, log_text):
         mid = state["mutation_id"]
@@ -82,38 +87,29 @@ def dashboard_tab():
         current_steps = log_text.count("→") if log_text else 0
         tool = tools[current_steps % len(tools)]
 
-        # ✅ FIXED PAYLOAD
-        res = post("/step", {
-            "tool_name": tool,
-            "tool_input": {"mutation_id": mid}
-        })
+        payload = {
+            "action": {
+                "tool_name": tool,
+                "tool_input": {"mutation_id": mid}
+            }
+        }
+
+        res = post("/step", payload)
 
         if "error" in res:
-            log_text = append_log(log_text, f"❌ {res['error']}")
-            return state, *format_summary({}), log_text
+            return state, *format_summary({}), append_log(log_text, f"❌ {res['error']}")
 
         obs = extract_obs(res)
-        reward = res.get("reward") or res.get("observation", {}).get("reward")
+        reward = extract_reward(res)
 
-        summary = format_summary(obs)
-        log_text = append_log(log_text, f"{tool} → reward {reward}")
-
-        return state, *summary, log_text
+        return state, *format_summary(obs), append_log(log_text, f"{tool} → reward {reward}")
 
     with gr.Row():
         reset_btn = gr.Button("Reset", variant="primary")
         step_btn = gr.Button("Run Step")
 
-    reset_btn.click(
-        reset,
-        outputs=[state, mutation_id, gene, change, position, steps, budget, log]
-    )
-
-    step_btn.click(
-        step,
-        inputs=[state, log],
-        outputs=[state, mutation_id, gene, change, position, steps, budget, log]
-    )
+    reset_btn.click(reset, outputs=[state, mutation_id, gene, change, position, steps, budget, log])
+    step_btn.click(step, inputs=[state, log], outputs=[state, mutation_id, gene, change, position, steps, budget, log])
 
 
 # ------------------ Control ------------------ #
@@ -137,10 +133,7 @@ def control_tab():
 
     def reset():
         res = post("/reset", {})
-        obs = extract_obs(res)
-        mid = obs.get("mutation_id")
-
-        return {"mutation_id": mid}, "Initialized\n"
+        return {"mutation_id": extract_obs(res).get("mutation_id")}, "Initialized\n"
 
     def step(tool, verdict, state, log_text):
         mid = state["mutation_id"]
@@ -148,36 +141,28 @@ def control_tab():
         if not mid:
             return state, "❌ Reset first"
 
-        # ✅ FIXED PAYLOAD
         payload = {
-            "tool_name": tool,
-            "tool_input": {"mutation_id": mid}
+            "action": {
+                "tool_name": tool,
+                "tool_input": {"mutation_id": mid}
+            }
         }
 
         if tool == "submit_verdict":
-            payload["tool_input"]["verdict"] = verdict
+            payload["action"]["tool_input"]["verdict"] = verdict  # ✅ correct casing
 
         res = post("/step", payload)
 
         if "error" in res:
-            log_text = append_log(log_text, f"❌ {res['error']}")
-            return state, log_text
-        
-        reward = res.get("reward") or res.get("observation", {}).get("reward")
+            return state, append_log(log_text, f"❌ {res['error']}")
 
-        log_text = append_log(
-            log_text,
-            f"{tool} → reward {reward}"
-        )
+        reward = extract_reward(res)
 
-        return state, log_text
+        return state, append_log(log_text, f"{tool} → reward {reward}")
 
     with gr.Row():
-        reset_btn = gr.Button("Reset")
-        run_btn = gr.Button("Run Action", variant="primary")
-
-    reset_btn.click(reset, outputs=[state, log])
-    run_btn.click(step, inputs=[tool, verdict, state, log], outputs=[state, log])
+        gr.Button("Reset").click(reset, outputs=[state, log])
+        gr.Button("Run Action", variant="primary").click(step, inputs=[tool, verdict, state, log], outputs=[state, log])
 
 
 # ------------------ Demo ------------------ #
@@ -186,8 +171,7 @@ def demo_tab():
 
     def run():
         res = post("/reset", {})
-        obs = extract_obs(res)
-        mid = obs.get("mutation_id")
+        mid = extract_obs(res).get("mutation_id")
 
         text = f"Start: {mid}\n\n"
 
@@ -197,22 +181,22 @@ def demo_tab():
             "get_domain_annotation",
             "submit_verdict",
         ]:
-            # ✅ FIXED PAYLOAD
             payload = {
-                "tool_name": tool,
-                "tool_input": {"mutation_id": mid}
+                "action": {
+                    "tool_name": tool,
+                    "tool_input": {"mutation_id": mid}
+                }
             }
 
             if tool == "submit_verdict":
-                payload["tool_input"]["verdict"] = "Pathogenic"
+                payload["action"]["tool_input"]["verdict"] = "Pathogenic"
 
             res = post("/step", payload)
 
             if "error" in res:
-                text += f"❌ {res['error']}\n"
-                break
+                return text + f"❌ {res['error']}\n"
 
-            reward = res.get("reward") or res.get("observation", {}).get("reward")
+            reward = extract_reward(res)
             text += f"{tool} → reward {reward}\n"
 
             if res.get("done"):
@@ -231,10 +215,8 @@ def create_app():
         with gr.Tabs():
             with gr.Tab("Dashboard"):
                 dashboard_tab()
-
             with gr.Tab("Control"):
                 control_tab()
-
             with gr.Tab("Demo"):
                 demo_tab()
 
