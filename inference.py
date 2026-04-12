@@ -137,15 +137,21 @@ def parse_ws(msg):
     data = msg.get("data", {})
     obs = data.get("observation", {})
 
-    reward = data.get("reward")
+    # ✅ extract safely from BOTH locations
+    reward_top = data.get("reward")
+    reward_obs = obs.get("reward")
 
-    # 🔥 critical fix: fallback to observation.reward
-    if reward is None:
-        reward = obs.get("reward", 0.0)
+    if reward_top is not None:
+        reward = reward_top
+    elif reward_obs is not None:
+        reward = reward_obs
+    else:
+        reward = 0.0
 
-    reward = float(reward or 0.0)
+    reward = float(reward)
 
     done = bool(data.get("done") or obs.get("episode_done"))
+
     return obs, reward, done
 
 
