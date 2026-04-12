@@ -167,6 +167,7 @@ class ProteinMutationAnalyzerEnvironment(OpenEnvEnvironment):
 
             elif tool_name == "submit_verdict":
                 verdict = tool_input.get("verdict", "")
+                
                 submit_verdict(mutation_id, verdict)
 
                 self._state.episode_done = True
@@ -188,6 +189,7 @@ class ProteinMutationAnalyzerEnvironment(OpenEnvEnvironment):
 
         if not already_called:
             self._state.tools_called.append(tool_name)
+        
 
         deciding = self._state.deciding_factor
 
@@ -219,6 +221,8 @@ class ProteinMutationAnalyzerEnvironment(OpenEnvEnvironment):
     def state(self):
         if self._state is None:
             return {"episode_id": None, "step_count": 0}
+        print("STATE BEFORE GRADER:", self._state)
+        
 
         return {
             "episode_id": self._state.mutation_id,
@@ -228,6 +232,7 @@ class ProteinMutationAnalyzerEnvironment(OpenEnvEnvironment):
     # ───────── OBS ─────────
     def _to_observation(self, reward=None):
         s = self._state
+        print("STATE BEFORE GRADER:", self._state)
 
         if reward is not None:
             reward = max(0.0, min(1.0, float(reward)))

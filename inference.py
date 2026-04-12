@@ -132,10 +132,19 @@ async def ws_send_recv(ws, payload):
     return json.loads(raw)
 
 
+# ✅ FIXED HERE
 def parse_ws(msg):
     data = msg.get("data", {})
     obs = data.get("observation", {})
-    reward = float(data.get("reward") or 0.0)
+
+    reward = data.get("reward")
+
+    # 🔥 critical fix: fallback to observation.reward
+    if reward is None:
+        reward = obs.get("reward", 0.0)
+
+    reward = float(reward or 0.0)
+
     done = bool(data.get("done") or obs.get("episode_done"))
     return obs, reward, done
 
@@ -182,7 +191,7 @@ async def run_task(task_id, task_name):
                     if parsed:
                         action = parsed
 
-                # Fallback if LLM fails
+                # Fallback
                 if action is None:
                     action = fallback_policy(step, mutation_id, obs)
 
@@ -209,7 +218,7 @@ async def run_task(task_id, task_name):
         log_end(False, step, 0.0, [])
         return
 
-    # ── SCORE (FIXED) ──────────────────────────────
+    # SCORE
     score = sum(rewards) / MAX_TOTAL_REWARD
     score = min(max(score, 0.0), 1.0)
 
