@@ -502,7 +502,7 @@ def dashboard_tab():
         obs = extract_obs(res)
         mid = obs.get("mutation_id")
         return (
-            {"mutation_id": mid},
+            {"mutation_id": mid, "steps": 0},
             create_protein_card(obs),
             "▶ ENV INITIALIZED\n✓ Mutation loaded — ready for analysis\n",
         )
@@ -513,7 +513,11 @@ def dashboard_tab():
             return state, create_protein_card(None), "✗ Reset required before stepping"
 
         tools = ["get_conservation_score", "get_ddg_estimate", "get_domain_annotation"]
-        current_steps = log_text.count("→") if log_text else 0
+        current_steps = state.get("steps", 0)
+
+        if current_steps >= 6:
+            return state, create_protein_card(extract_obs(post("/reset", {}))), log_text
+
         tool = tools[current_steps % len(tools)]
 
         tool_labels = {
@@ -532,14 +536,16 @@ def dashboard_tab():
         sign   = "▲" if reward and reward > 0 else "▼" if reward and reward < 0 else "→"
         rstr   = (f"+{reward}" if reward and reward > 0 else ("None (redundant tool call, zero reward)" if reward is None else str(reward)))
         new_log = append_log(log_text, f"→ {tool_labels.get(tool, tool)}\n  {sign} reward: {rstr}\n")
-        return state, create_protein_card(obs), new_log
 
-    with gr.Row():
-        reset_btn = gr.Button("⟳  INITIALIZE", variant="primary",   size="lg")
-        step_btn  = gr.Button("▶  RUN STEP",   variant="secondary", size="lg")
+        new_steps = current_steps + 1
+        new_state = {"mutation_id": mid, "steps": new_steps}
 
-    reset_btn.click(reset, outputs=[state, protein_card, log])
-    step_btn.click(step,   inputs=[state, log], outputs=[state, protein_card, log])
+        if new_steps >= 6:
+            final_res    = post("/step", {"action": {"tool_name": "submit_verdict", "tool_input": {"mutation_id": mid, "verdict": "Pathogenic"}}})
+            final_reward = extract_reward(final_res)
+            new_log = append_log(new_log, f"\n✓ Budget exhausted — verdict submitted\n  ★ Final reward: {final_reward}\n\n↺ Reset to analyze a new gene target\n")
+
+        return new_state, create_protein_card(obs), new_log
 
 
 def control_tab():
