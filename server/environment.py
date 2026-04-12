@@ -73,6 +73,7 @@ class ProteinMutationAnalyzerEnvironment(OpenEnvEnvironment):
 
         self._state: Optional[State] = None
 
+    # ───────── RESET ─────────
     def reset(self, seed=None, episode_id=None, **kwargs):
         task_id = kwargs.get("task_id", random.choice([1, 2, 3]))
         pool = self.task_pools.get(task_id, self.task_pools[1])
@@ -104,9 +105,11 @@ class ProteinMutationAnalyzerEnvironment(OpenEnvEnvironment):
 
         return self._to_observation()
 
+    # ───────── STEP ─────────
     def step(self, action, timeout_s=None, **kwargs):
+        # 🔴 HARD FIX: auto-reset if missing (prevents crash)
         if self._state is None:
-            raise RuntimeError("Call reset() before step()")
+            self.reset()
 
         if self._state.episode_done:
             return self._to_observation()
@@ -147,13 +150,7 @@ class ProteinMutationAnalyzerEnvironment(OpenEnvEnvironment):
                 if result:
                     ddg = len(result) % 4 - 2
 
-                    if ddg < -1.0:
-                        impact = "destabilizing"
-                    elif ddg > 1.0:
-                        impact = "stabilizing"
-                    else:
-                        impact = "neutral"
-
+                    impact = "destabilizing" if ddg < -1.0 else "stabilizing" if ddg > 1.0 else "neutral"
                     confidence = "high" if abs(ddg) > 1.5 else "medium" if abs(ddg) > 0.5 else "low"
 
                     self._state.structure_result = StructureToolOutput(
@@ -172,9 +169,7 @@ class ProteinMutationAnalyzerEnvironment(OpenEnvEnvironment):
                     self._state.domain_result = DomainToolOutput(
                         domain_name="UnknownDomain",
                         is_critical=flag,
-                        function_description=(
-                            "Critical functional region" if flag else "Non-critical region"
-                        ),
+                        function_description="Critical functional region" if flag else "Non-critical region",
                     )
                 else:
                     self._state.domain_result = local_domain(mutation_id)
@@ -194,7 +189,7 @@ class ProteinMutationAnalyzerEnvironment(OpenEnvEnvironment):
         except Exception:
             return self._to_observation()
 
-        # ── bookkeeping ──
+        # ───────── bookkeeping ─────────
         cost = TOOL_COSTS[tool_name]
         self._state.budget_spent += cost
         self._state.budget_remaining -= cost
@@ -205,37 +200,29 @@ class ProteinMutationAnalyzerEnvironment(OpenEnvEnvironment):
 
         deciding = self._state.deciding_factor
 
-        # ── reward shaping ──
+        # ───────── reward shaping ─────────
         if already_called:
             step_reward = -0.15
-
         elif tool_name == "get_conservation_score":
             score = self._state.conservation_result.phylop_score
             step_reward = 0.08 if abs(score) > 2 else 0.02
             if deciding in ("conservation", "combined"):
                 step_reward += 0.05
-
         elif tool_name == "get_ddg_estimate":
             ddg = self._state.structure_result.ddg_estimate
-            if ddg < -2.0:
-                step_reward = 0.08
-            elif ddg > -0.5:
-                step_reward = 0.06
-            else:
-                step_reward = 0.02
+            step_reward = 0.08 if ddg < -2.0 else 0.06 if ddg > -0.5 else 0.02
             if deciding in ("structure", "combined"):
                 step_reward += 0.05
-
         elif tool_name == "get_domain_annotation":
             step_reward = 0.07 if self._state.domain_result.is_critical else 0.02
             if deciding in ("domain", "combined"):
                 step_reward += 0.05
-
         else:
             step_reward = 0.01
 
         return self._to_observation(reward=round(step_reward, 4))
 
+    # ───────── STATE ─────────
     def state(self):
         if self._state is None:
             return {"episode_id": None, "step_count": 0}
@@ -245,6 +232,7 @@ class ProteinMutationAnalyzerEnvironment(OpenEnvEnvironment):
             "step_count": self._state.steps_taken,
         }
 
+    # ───────── OBS ─────────
     def _to_observation(self, reward=None):
         s = self._state
 
