@@ -452,7 +452,7 @@ def create_reward_explainer():
       </div>
       <div style="{row}">
         {indicator("&#8722;", RED)}
-        {desc("Negative Reward", "Incorrect verdict or redundant tool execution.")}
+        {desc("Zero Reward", "Incorrect verdict or redundant tool execution.")}
       </div>
       <div style="{rowl}">
         {indicator("&#9673;", CYAN)}
@@ -530,7 +530,7 @@ def dashboard_tab():
         obs    = extract_obs(res)
         reward = extract_reward(res)
         sign   = "▲" if reward and reward > 0 else "▼" if reward and reward < 0 else "→"
-        rstr   = (f"+{reward}" if reward and reward > 0 else str(reward))
+        rstr   = (f"+{reward}" if reward and reward > 0 else ("None (redundant tool call, zero reward)" if reward is None else str(reward)))
         new_log = append_log(log_text, f"→ {tool_labels.get(tool, tool)}\n  {sign} reward: {rstr}\n")
         return state, create_protein_card(obs), new_log
 
@@ -579,7 +579,7 @@ def control_tab():
             "get_conservation_score": "CSv  Conservation Score",
             "get_ddg_estimate":       "ΔΔG  Stability Estimate",
             "get_domain_annotation":  "DOM  Domain Annotation",
-            "submit_verdict":         "⚖   Submit Verdict",
+            "submit_verdict":         "     Submit Verdict",
         }
 
         payload = {"action": {"tool_name": tool, "tool_input": {"mutation_id": mid}}}
@@ -631,7 +631,7 @@ def demo_tab():
 
             reward = extract_reward(res)
             sign   = "▲" if reward and reward > 0 else "▼" if reward and reward < 0 else "→"
-            rstr   = (f"+{reward}" if reward and reward > 0 else str(reward))
+            rstr   = (f"+{reward}" if reward and reward > 0 else ("None (redundant tool call, zero reward)" if reward is None else str(reward)))
             text  += f"→ {label}\n  {sign} reward: {rstr}\n\n"
 
             if res.get("done"):
