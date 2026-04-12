@@ -10,13 +10,6 @@ def post(path, payload):
         r = requests.post(f"{BASE}{path}", json=payload, timeout=10)
         r.raise_for_status()
         return r.json()
-    except requests.HTTPError as e:
-        detail = ""
-        try:
-            detail = e.response.text
-        except Exception:
-            pass
-        return {"error": f"{e} | body={detail}"}
     except Exception as e:
         return {"error": str(e)}
 
@@ -89,21 +82,18 @@ def dashboard_tab():
         current_steps = log_text.count("→") if log_text else 0
         tool = tools[current_steps % len(tools)]
 
-        payload = {
-            "action": {
-                "tool_name": tool,
-                "tool_input": {"mutation_id": mid}
-            }
-        }
-
-        res = post("/step", payload)
+        # ✅ FIXED PAYLOAD
+        res = post("/step", {
+            "tool_name": tool,
+            "tool_input": {"mutation_id": mid}
+        })
 
         if "error" in res:
             log_text = append_log(log_text, f"❌ {res['error']}")
             return state, *format_summary({}), log_text
 
         obs = extract_obs(res)
-        reward = res.get("reward")
+        reward = res.get("reward") or res.get("observation", {}).get("reward")
 
         summary = format_summary(obs)
         log_text = append_log(log_text, f"{tool} → reward {reward}")
@@ -158,25 +148,26 @@ def control_tab():
         if not mid:
             return state, "❌ Reset first"
 
+        # ✅ FIXED PAYLOAD
         payload = {
-            "action": {
-                "tool_name": tool,
-                "tool_input": {"mutation_id": mid}
-            }
+            "tool_name": tool,
+            "tool_input": {"mutation_id": mid}
         }
 
         if tool == "submit_verdict":
-            payload["action"]["tool_input"]["verdict"] = verdict.lower()
+            payload["tool_input"]["verdict"] = verdict
 
         res = post("/step", payload)
 
         if "error" in res:
             log_text = append_log(log_text, f"❌ {res['error']}")
             return state, log_text
+        
+        reward = res.get("reward") or res.get("observation", {}).get("reward")
 
         log_text = append_log(
             log_text,
-            f"{tool} → reward {res.get('reward')}"
+            f"{tool} → reward {reward}"
         )
 
         return state, log_text
@@ -206,15 +197,14 @@ def demo_tab():
             "get_domain_annotation",
             "submit_verdict",
         ]:
+            # ✅ FIXED PAYLOAD
             payload = {
-                "action": {
-                    "tool_name": tool,
-                    "tool_input": {"mutation_id": mid}
-                }
+                "tool_name": tool,
+                "tool_input": {"mutation_id": mid}
             }
 
             if tool == "submit_verdict":
-                payload["action"]["tool_input"]["verdict"] = "pathogenic"
+                payload["tool_input"]["verdict"] = "Pathogenic"
 
             res = post("/step", payload)
 
@@ -222,7 +212,8 @@ def demo_tab():
                 text += f"❌ {res['error']}\n"
                 break
 
-            text += f"{tool} → reward {res.get('reward')}\n"
+            reward = res.get("reward") or res.get("observation", {}).get("reward")
+            text += f"{tool} → reward {reward}\n"
 
             if res.get("done"):
                 break
