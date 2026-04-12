@@ -34,13 +34,6 @@ The agent interacts using structured tool calls. Each action incurs a cost and c
 | `get_domain_annotation` | Provides functional domain context. |
 | `submit_verdict` | Final clinical classification. |
 
-**Example Action:**
-```json
-{
-  "tool_name": "get_conservation_score",
-  "tool_input": {"mutation_id": "PROT-123"}
-}
-
 
 ---
 ## 2. Observation Space
