@@ -1,5 +1,5 @@
 ---
-title: Protein Mutation Analyzer Environment Server
+title: Protein Mutation Analyzer Reinforcement Learning Environment Server
 emoji: 🎬
 colorFrom: green
 colorTo: yellow
