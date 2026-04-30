@@ -13,7 +13,7 @@ tags:
 
 # Protein Mutation Analyzer Environment
 
-A clinical environment for analyzing protein mutations and predicting pathogenicity. It implements a biomedical workflow where an agent learns to classify protein mutations as **Pathogenic**, **Benign**, or **Uncertain**. The environment requires agents to synthesize biological signals—such as evolutionary conservation, structural stability, and domain context—to reach a final clinical decision.
+A clinical reinforcement learning environment for analyzing protein mutations and predicting pathogenicity. It implements a biomedical workflow where an agent learns to classify protein mutations as **Pathogenic**, **Benign**, or **Uncertain**. The environment requires agents to synthesize biological signals—such as evolutionary conservation, structural stability, and domain context—to reach a final clinical decision.
 
 ## 🏗️ OpenEnv Architecture
 The environment follows a standardized API contract for seamless agent–environment interaction:
