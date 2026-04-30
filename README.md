@@ -1,5 +1,5 @@
 ---
-title: Protein Mutation Analyzer Reinforcement Learning Environment Server
+title: Protein Mutation Analyzer Environment Server
 emoji: 🎬
 colorFrom: green
 colorTo: yellow
@@ -11,7 +11,7 @@ tags:
   - openenv
 ---
 
-# Protein Mutation Analyzer Environment
+# Protein Mutation Analyzer Reinforcement Learning Environment
 
 A clinical reinforcement learning environment for analyzing protein mutations and predicting pathogenicity. It implements a biomedical workflow where an agent learns to classify protein mutations as **Pathogenic**, **Benign**, or **Uncertain**. The environment requires agents to synthesize biological signals—such as evolutionary conservation, structural stability, and domain context—to reach a final clinical decision.
 
